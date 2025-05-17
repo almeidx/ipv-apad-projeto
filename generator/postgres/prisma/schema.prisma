@@ -12,6 +12,7 @@ model Customer {
   id        Int    @id @default(autoincrement())
   firstName String @map("first_name")
   lastName  String @map("last_name")
+  nif       Int
 
   email String @unique
   phone String
@@ -28,7 +29,8 @@ model Customer {
 }
 
 model Product {
-  id Int @id @default(autoincrement())
+  id  Int    @id @default(autoincrement())
+  sku String @unique
 
   name        String
   description String
@@ -46,15 +48,14 @@ model Order {
   total     Float
   createdAt DateTime @default(now()) @map("created_at")
 
-  customerId Int @map("customer_id")
-  storeId    Int @map("store_id")
+  customerId     Int @map("customer_id")
+  documentTypeId Int @map("document_type_id")
 
-  customer Customer    @relation(fields: [customerId], references: [id])
-  store    Store       @relation(fields: [storeId], references: [id])
-  items    OrderItem[]
+  customer     Customer     @relation(fields: [customerId], references: [id])
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id])
+  items        OrderItem[]
 
   @@index([customerId])
-  @@index([storeId])
   @@index([createdAt])
   @@map("orders")
 }
@@ -74,15 +75,11 @@ model OrderItem {
   @@map("order_items")
 }
 
-model Store {
+model DocumentType {
   id   Int    @id @default(autoincrement())
   name String
 
-  address    String
-  city       String
-  postalCode String @map("postal_code")
-
   orders Order[]
 
-  @@map("stores")
+  @@map("document_types")
 }

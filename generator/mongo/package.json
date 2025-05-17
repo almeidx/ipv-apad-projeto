@@ -1,0 +1,9 @@
+{
+  "name": "mongo",
+  "type": "module",
+  "packageManager": "pnpm@10.11.0",
+  "dependencies": {
+    "@faker-js/faker": "^9.8.0",
+    "mongodb": "^6.16.0"
+  }
+}
