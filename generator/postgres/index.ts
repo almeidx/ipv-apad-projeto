@@ -1,5 +1,5 @@
 import { type Prisma, PrismaClient } from "./generated/prisma/index.js";
-import { fakerPT_PT as faker } from "@faker-js/faker";
+import { fakerPT_PT as faker, Faker, pt_PT } from "@faker-js/faker";
 
 const prisma = new PrismaClient();
 
@@ -18,23 +18,29 @@ console.timeEnd("deleting old data");
 
 console.time("generating data");
 
+// Only using this for the data that should be the same between databases.
+const seededFaker = new Faker({
+	seed: 123,
+	locale: pt_PT,
+});
+
 const usedSkus = new Set<string>();
 
 const products: (Prisma.ProductCreateInput & { id: number })[] = [];
 for (let id = 1; id <= PRODUCT_COUNT; id++) {
 	let sku: string;
 	do {
-		sku = faker.string.alphanumeric(5);
+		sku = seededFaker.string.alphanumeric({ length: 6, casing: "upper" });
 	} while (usedSkus.has(sku));
 	usedSkus.add(sku);
 
 	products.push({
 		id,
-		name: faker.commerce.productName(),
+		name: seededFaker.commerce.productName(),
 		sku,
-		price: Number.parseFloat(faker.commerce.price({ min: 1, max: 100, dec: 2 })),
-		description: faker.commerce.productDescription(),
-		createdAt: faker.date.past(),
+		price: Number.parseFloat(seededFaker.commerce.price({ min: 1, max: 100, dec: 2 })),
+		description: seededFaker.commerce.productDescription(),
+		createdAt: seededFaker.date.past(),
 	});
 }
 
@@ -42,24 +48,23 @@ usedSkus.clear();
 
 const seenEmails = new Set<string>();
 
-const customers: (Prisma.CustomerCreateInput & { id: number })[] = [];
-for (let id = 1; id <= CUSTOMER_COUNT; id++) {
-	let email = faker.internet.email();
+const customers: Prisma.CustomerCreateInput[] = [];
+for (let i = 1; i <= CUSTOMER_COUNT; i++) {
+	let email = seededFaker.internet.email();
 	while (seenEmails.has(email)) {
-		email = faker.internet.email();
+		email = seededFaker.internet.email();
 	}
 	seenEmails.add(email);
 
 	customers.push({
-		id,
-		firstName: faker.person.firstName(),
-		lastName: faker.person.lastName(),
-		nif: faker.number.int({ min: 100_000_000, max: 999_999_999 }),
+		nif: seededFaker.number.int({ min: 100_000_000, max: 999_999_999 }),
+		firstName: seededFaker.person.firstName(),
+		lastName: seededFaker.person.lastName(),
 		email,
-		address: faker.location.streetAddress(),
-		city: faker.location.city(),
-		postalCode: faker.location.zipCode(),
-		phone: faker.phone.number(),
+		address: seededFaker.location.streetAddress(),
+		city: seededFaker.location.city(),
+		postalCode: seededFaker.location.zipCode(),
+		phone: seededFaker.phone.number(),
 	});
 }
 
@@ -75,13 +80,11 @@ await prisma.documentType.createMany({
 	data: documentTypes,
 });
 
-const orders: (Prisma.OrderCreateManyInput & {
-	items: any[];
-})[] = [];
+const orders: (Prisma.OrderCreateManyInput & { items: any[] })[] = [];
 for (let id = 1; id <= ORDER_COUNT; id++) {
 	orders.push({
 		id,
-		customerId: faker.helpers.arrayElement(customers).id,
+		customerNif: faker.helpers.arrayElement(customers).nif,
 		documentTypeId: faker.helpers.arrayElement(documentTypes).id,
 
 		total: Number.parseFloat(faker.commerce.price()),

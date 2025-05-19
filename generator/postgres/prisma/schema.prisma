@@ -9,10 +9,9 @@ datasource db {
 }
 
 model Customer {
-  id        Int    @id @default(autoincrement())
+  nif       Int    @id
   firstName String @map("first_name")
   lastName  String @map("last_name")
-  nif       Int
 
   email String @unique
   phone String
@@ -48,14 +47,14 @@ model Order {
   total     Float
   createdAt DateTime @default(now()) @map("created_at")
 
-  customerId     Int @map("customer_id")
+  customerNif    Int @map("customer_nif")
   documentTypeId Int @map("document_type_id")
 
-  customer     Customer     @relation(fields: [customerId], references: [id])
+  customer     Customer     @relation(fields: [customerNif], references: [nif])
   documentType DocumentType @relation(fields: [documentTypeId], references: [id])
   items        OrderItem[]
 
-  @@index([customerId])
+  @@index([customerNif])
   @@index([createdAt])
   @@map("orders")
 }

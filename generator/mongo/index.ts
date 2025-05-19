@@ -1,5 +1,5 @@
 import { MongoClient } from "mongodb";
-import { fakerPT_PT as faker } from "@faker-js/faker";
+import { Faker, fakerPT_PT as faker, pt_PT } from "@faker-js/faker";
 
 const client = new MongoClient("mongodb://localhost:27017");
 
@@ -15,28 +15,45 @@ const ORDERS_COUNT = 123_456;
 const CUSTOMERS_COUNT = 10_000;
 const ITEMS_COUNT = 300_000;
 
-const customers = faker.helpers.multiple(() => ({
-	customer_id: faker.number.int({ min: 1, max: CUSTOMERS_COUNT }),
-	name: faker.person.fullName(),
-	email: faker.internet.email(),
-	nif: faker.number.int({ min: 100_000_000, max: 999_999_999 }),
-}), { count: CUSTOMERS_COUNT });
+// Only using this for the data that should be the same between databases.
+const seededFaker = new Faker({
+	seed: 123,
+	locale: pt_PT,
+});
+
+const seenEmails = new Set<string>();
+
+const customers = faker.helpers.multiple(() => {
+	let email = seededFaker.internet.email();
+	while (seenEmails.has(email)) {
+		email = seededFaker.internet.email();
+	}
+	seenEmails.add(email);
+
+	return {
+		nif: seededFaker.number.int({ min: 100_000_000, max: 999_999_999 }),
+		name: seededFaker.person.fullName(),
+		email,
+	};
+}, { count: CUSTOMERS_COUNT });
+
+seenEmails.clear();
 
 const usedSkus = new Set<string>();
 
 const items = faker.helpers.multiple(() => {
 	let sku: string;
 	do {
-		sku = faker.string.alphanumeric(5);
+		sku = seededFaker.string.alphanumeric({ length: 6, casing: "upper" });
 	} while (usedSkus.has(sku));
 	usedSkus.add(sku);
 
-	return ({
+	return {
 		sku,
-		name: faker.commerce.productName(),
-		price: Number.parseFloat(faker.commerce.price({ min: 1, max: 100, dec: 2 })),
-		material: faker.commerce.productMaterial(),
-	})
+		name: seededFaker.commerce.productName(),
+		price: Number.parseFloat(seededFaker.commerce.price({ min: 1, max: 100, dec: 2 })),
+		material: seededFaker.commerce.productMaterial(),
+	};
 }, { count: ITEMS_COUNT });
 
 usedSkus.clear();
@@ -53,10 +70,9 @@ for (let i = 0; i < ORDERS_COUNT; i += BATCH_SIZE) {
 	const orders: {
 		order_id: string;
 		customer: {
-			customer_id: number;
+			nif: number;
 			name: string;
 			email: string;
-			nif: number;
 		};
 		items: {
 			product: {
