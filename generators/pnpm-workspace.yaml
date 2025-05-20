@@ -1,5 +1,8 @@
+ignoredBuiltDependencies:
+  - vue-demi
 onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'
   - esbuild
   - prisma
+  - puppeteer

@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+generator erd {
+  provider = "prisma-erd-generator"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATA_MART_POSTGRES_URI")
+}
+
+model Sale {
+  id          BigInt @id @default(autoincrement())
+  quantity    Int    @db.SmallInt
+  unitPrice   Float  @map("unit_price")
+  totalAmount Float  @map("total_amount")
+
+  dateId Int @map("date_id")
+
+  date Date @relation(fields: [dateId], references: [id])
+
+  @@map("sales")
+}
+
+model Date {
+  id Int @id @default(autoincrement())
+
+  year  Int @db.SmallInt
+  month Int @db.SmallInt
+  day   Int @db.SmallInt
+
+  sales Sale[]
+
+  @@unique([year, month, day])
+  @@map("d_dates")
+}
+
+model Customer {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(128)
+}

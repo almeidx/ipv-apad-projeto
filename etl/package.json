@@ -1,0 +1,19 @@
+{
+  "name": "etl",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.20",
+    "prisma": "^6.8.2",
+    "prisma-erd-generator": "^2.0.4",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "pnpm@10.11.0"
+}
