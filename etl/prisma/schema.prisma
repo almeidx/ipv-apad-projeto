@@ -3,10 +3,6 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
-generator erd {
-  provider = "prisma-erd-generator"
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("DATA_MART_POSTGRES_URI")
@@ -18,9 +14,15 @@ model Sale {
   unitPrice   Float  @map("unit_price")
   totalAmount Float  @map("total_amount")
 
-  dateId Int @map("date_id")
+  dateId     Int @map("date_id")
+  customerId Int @map("customer_id")
+  storeId    Int @map("store_id")
+  productId  Int @map("product_id")
 
-  date Date @relation(fields: [dateId], references: [id])
+  date     Date     @relation(fields: [dateId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("sales")
 }
@@ -39,6 +41,39 @@ model Date {
 }
 
 model Customer {
-  id   Int    @id @default(autoincrement())
-  name String @db.VarChar(128)
+  id         Int     @id @default(autoincrement())
+  nif        Int     @unique
+  name       String  @db.VarChar(128)
+  email      String  @db.VarChar(320)
+  phone      String? @db.VarChar(32)
+  address    String? @db.VarChar(255)
+  city       String? @db.VarChar(64)
+  postalCode String? @map("postal_code") @db.VarChar(16)
+
+  sales Sale[]
+
+  @@map("d_customers")
+}
+
+model Store {
+  id       Int    @id @default(autoincrement()) @db.SmallInt
+  location String @db.VarChar(128)
+  name     String @db.VarChar(64)
+
+  sales Sale[]
+
+  @@map("d_stores")
+}
+
+model Product {
+  id          Int     @id @default(autoincrement())
+  sku         String  @unique @db.VarChar(64)
+  name        String  @db.VarChar(128)
+  description String? @db.Text
+  price       Float
+  material    String? @db.VarChar(64)
+
+  sales Sale[]
+
+  @@map("d_products")
 }
