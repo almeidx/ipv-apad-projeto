@@ -14,15 +14,17 @@ model Sale {
   unitPrice   Float  @map("unit_price")
   totalAmount Float  @map("total_amount")
 
-  dateId     Int @map("date_id")
-  customerId Int @map("customer_id")
-  storeId    Int @map("store_id")
-  productId  Int @map("product_id")
+  dateId         Int @map("date_id")
+  customerId     Int @map("customer_id")
+  storeId        Int @map("store_id")
+  productId      Int @map("product_id")
+  documentTypeId Int @map("document_type_id")
 
-  date     Date     @relation(fields: [dateId], references: [id], onDelete: Cascade)
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  date         Date         @relation(fields: [dateId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
 
   @@map("sales")
 }
@@ -41,18 +43,28 @@ model Date {
 }
 
 model Customer {
-  id         Int     @id @default(autoincrement())
-  nif        Int     @unique
-  name       String  @db.VarChar(128)
-  email      String  @db.VarChar(320)
-  phone      String? @db.VarChar(32)
-  address    String? @db.VarChar(255)
-  city       String? @db.VarChar(64)
-  postalCode String? @map("postal_code") @db.VarChar(16)
+  id    Int     @id @default(autoincrement())
+  nif   Int     @unique
+  name  String  @db.VarChar(64)
+  email String  @db.VarChar(320)
+  phone String? @db.VarChar(32)
 
-  sales Sale[]
+  sales     Sale[]
+  addresses CustomerAddress[]
 
   @@map("d_customers")
+}
+
+model CustomerAddress {
+  id         Int    @id @default(autoincrement())
+  address    String @db.VarChar(128)
+  city       String @db.VarChar(32)
+  postalCode String @map("postal_code") @db.VarChar(8)
+
+  customerNif Int      @map("customer_nif")
+  customer    Customer @relation(fields: [customerNif], references: [id], onDelete: Cascade)
+
+  @@map("d_customer_addresses")
 }
 
 model Store {
@@ -68,7 +80,7 @@ model Store {
 model Product {
   id          Int     @id @default(autoincrement())
   sku         String  @unique @db.VarChar(64)
-  name        String  @db.VarChar(128)
+  name        String  @db.VarChar(64)
   description String? @db.Text
   price       Float
   material    String? @db.VarChar(64)
@@ -76,4 +88,13 @@ model Product {
   sales Sale[]
 
   @@map("d_products")
+}
+
+model DocumentType {
+  id   Int    @id @default(autoincrement()) @db.SmallInt
+  name String @db.VarChar(32)
+
+  sales Sale[]
+
+  @@map("d_document_types")
 }

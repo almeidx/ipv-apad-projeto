@@ -20,15 +20,26 @@ model Customer {
   email String @unique
   phone String
 
-  address    String
-  city       String
-  postalCode String @map("postal_code")
-
   registeredAt DateTime @default(now()) @map("registered_at")
 
   orders Order[]
+  addressHistory CustomerAddress[]
 
   @@map("customers")
+}
+
+model CustomerAddress {
+  id        Int      @id @default(autoincrement())
+  address   String
+  city      String
+  postalCode String  @map("postal_code")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  customerNif Int
+  customer   Customer @relation(fields: [customerNif], references: [nif], onDelete: Cascade)
+
+  @@index([customerNif])
+  @@map("customer_addresses")
 }
 
 model Product {

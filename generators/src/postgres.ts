@@ -17,6 +17,7 @@ await prisma.order.deleteMany();
 await prisma.product.deleteMany();
 await prisma.customer.deleteMany();
 await prisma.documentType.deleteMany();
+await prisma.customerAddress.deleteMany();
 
 console.timeEnd("deleting old data");
 
@@ -36,22 +37,37 @@ const products: (Prisma.ProductCreateInput & { id: number })[] = faker.helpers
 		createdAt: faker.date.past(),
 	}));
 
-const customers: Prisma.CustomerCreateInput[] = faker.helpers
-	.arrayElements(customersJson as CustomersJsonItem[], {
-		min: 1,
-		max: CUSTOMER_COUNT,
-	})
-	.map((customer) => ({
-		nif: customer.nif,
-		firstName: customer.firstName,
-		lastName: customer.lastName,
-		email: customer.email,
-		address: customer.address,
-		city: customer.city,
-		postalCode: customer.postalCode,
-		phone: customer.phone,
-		registeredAt: faker.date.past(),
-	}));
+// Use about 70% of customers from JSON, rest will be random
+const jsonCustomersCount = Math.floor(CUSTOMER_COUNT * 0.7);
+const jsonCustomers = faker.helpers.arrayElements(customersJson as CustomersJsonItem[], {
+	min: 1,
+	max: jsonCustomersCount,
+});
+
+// Generate random customers for the remaining 30%
+const randomCustomersCount = CUSTOMER_COUNT - jsonCustomers.length;
+const randomCustomers = Array.from({ length: randomCustomersCount }, () => ({
+	nif: faker.number.int({ min: 100000000, max: 999999999 }),
+	firstName: faker.person.firstName(),
+	lastName: faker.person.lastName(),
+	email: faker.internet.email(),
+	phone: faker.phone.number(),
+	address: faker.location.streetAddress(),
+	city: faker.location.city(),
+	postalCode: faker.location.zipCode(),
+}));
+
+// Combine both sets of customers
+const allCustomerData = [...jsonCustomers, ...randomCustomers];
+
+const customers: Prisma.CustomerCreateInput[] = allCustomerData.map((customer) => ({
+	nif: customer.nif,
+	firstName: customer.firstName,
+	lastName: customer.lastName,
+	email: customer.email,
+	phone: customer.phone,
+	registeredAt: faker.date.past(),
+}));
 
 const documentTypes = [
 	{ id: 1, name: "Fatura" },
@@ -100,6 +116,68 @@ console.timeEnd("seed:products");
 console.time("seed:customers");
 await prisma.customer.createMany({ data: customers });
 console.timeEnd("seed:customers");
+
+console.time("seed:address-history");
+const initialAddressRecords = customers.map(customer => {
+	// For JSON customers, use their original address
+	const jsonCustomer = (customersJson as CustomersJsonItem[]).find(c => c.nif === customer.nif);
+	if (jsonCustomer) {
+		return {
+			customerNif: customer.nif,
+			address: jsonCustomer.address,
+			city: jsonCustomer.city,
+			postalCode: jsonCustomer.postalCode,
+			createdAt: customer.registeredAt!,
+		};
+	}
+	
+	// For random customers, generate a new address
+	return {
+		customerNif: customer.nif,
+		address: faker.location.streetAddress(),
+		city: faker.location.city(),
+		postalCode: faker.location.zipCode(),
+		createdAt: customer.registeredAt!,
+	};
+});
+
+const customersWithHistory = faker.helpers.arrayElements(customers, {
+	min: Math.floor(CUSTOMER_COUNT * 0.05),
+	max: Math.floor(CUSTOMER_COUNT * 0.15),
+});
+
+const additionalAddressRecords = [];
+
+for (const customer of customersWithHistory) {
+	const changeCount = faker.number.int({ min: 1, max: 3 });
+	
+	for (let i = 0; i < changeCount; i++) {
+		const createdAt = faker.date.between({
+			from: customer.registeredAt!,
+			to: new Date(),
+		});
+		
+		additionalAddressRecords.push({
+			customerNif: customer.nif,
+			address: faker.location.streetAddress(),
+			city: faker.location.city(),
+			postalCode: faker.location.zipCode(),
+			createdAt,
+		});
+	}
+}
+
+// Insert in batches to avoid too large SQL statements
+const ADDRESS_BATCH_SIZE = 1000;
+const allAddressRecords = [...initialAddressRecords, ...additionalAddressRecords];
+
+for (let i = 0; i < allAddressRecords.length; i += ADDRESS_BATCH_SIZE) {
+	const batch = allAddressRecords.slice(i, i + ADDRESS_BATCH_SIZE);
+	await prisma.customerAddress.createMany({
+		data: batch,
+	});
+}
+console.timeEnd("seed:address-history");
 
 console.time("seed:orders");
 
