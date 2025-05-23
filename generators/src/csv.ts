@@ -1,10 +1,90 @@
 import { parse as csvParse } from 'csv-parse/sync';
 import { stringify as csvStringify } from 'csv-stringify/sync';
 import { readFile, writeFile } from "node:fs/promises";
-import productsJson from "./generated/products.json" with { type: "json" };
-import customersJson from "./generated/customers.json" with { type: "json" };
-import type { ProductsJsonItem, CustomersJsonItem } from "./generate-common-data.ts";
 import { fakerPT_PT as faker } from "@faker-js/faker";
+import { PrismaClient } from "./generated/prisma/client.js";
+import { MongoClient } from "mongodb";
+import assert from "node:assert";
+import type { MongoOrderDocument } from "./mongo.ts";
+
+assert(process.env.MONGODB_URI, "MONGODB_URI must be set");
+
+const data = await readFile(new URL('../golden_crust.csv', import.meta.url), 'utf8');
+
+const records = csvParse(data, { columns: true, skipEmptyLines: true }) as CsvRecord[];
+
+console.log(`Found ${records.length} records in the original CSV`);
+
+const enrichedRecords: EnrichedRecord[] = [];
+
+{
+	const productSkus = new Set<string>();
+	const customerNifs = new Set<number>();
+
+	{
+		const prisma = new PrismaClient();
+
+		const [pgProducts, pgCustomers] = await Promise.all([
+			prisma.product.findMany({
+				select: { sku: true },
+			}),
+			prisma.customer.findMany({
+				select: { nif: true },
+			}),
+		]);
+
+		for (const product of pgProducts) {
+			productSkus.add(product.sku);
+		}
+		for (const customer of pgCustomers) {
+			customerNifs.add(customer.nif);
+		}
+
+		await prisma.$disconnect();
+	}
+
+	{
+		const client = new MongoClient(process.env.MONGODB_URI);
+
+		await client.connect();
+
+		const db = client.db("golden_crust");
+
+		const [distinctProductSkus, distinctCustomerNifs] = await Promise.all([
+			db.collection<MongoOrderDocument>("orders").distinct("items.product.sku"),
+			db.collection<MongoOrderDocument>("orders").distinct("customer.nif")
+		]);
+
+		for (const sku of distinctProductSkus) {
+			productSkus.add(sku);
+		}
+		for (const nif of distinctCustomerNifs) {
+			customerNifs.add(nif);
+		}
+
+		await client.close();
+	}
+
+	const productSkusArray = Array.from(productSkus);
+	const customerNifsArray = Array.from(customerNifs);
+
+	for (const record of records) {
+		const enrichedRecord: EnrichedRecord = {
+			...record,
+			product_sku: faker.helpers.arrayElement(productSkusArray),
+			customer_nif: faker.helpers.arrayElement(customerNifsArray).toString(),
+		};
+
+		enrichedRecords.push(enrichedRecord);
+	}
+}
+
+const outputPath = new URL('./generated/golden_crust_enhanced.csv', import.meta.url);
+const csvOutput = csvStringify(enrichedRecords, { header: true });
+
+await writeFile(outputPath, csvOutput);
+
+console.log('Done');
 
 interface CsvRecord {
 	sale_id: string;
@@ -20,39 +100,3 @@ interface EnrichedRecord extends CsvRecord {
 	product_sku: string;
 	customer_nif: string;
 }
-
-const data = await readFile(new URL('../golden_crust.csv', import.meta.url), 'utf8');
-
-const records = csvParse(data, { columns: true, skipEmptyLines: true }) as CsvRecord[];
-
-function enrichData(records: CsvRecord[]): EnrichedRecord[] {
-	const products = productsJson as ProductsJsonItem[];
-	const customers = customersJson as CustomersJsonItem[];
-	const enrichedRecords: EnrichedRecord[] = [];
-
-	for (const record of records) {
-		const randomProduct = faker.helpers.arrayElement(products);
-		const randomCustomer = faker.helpers.arrayElement(customers);
-
-		const enrichedRecord: EnrichedRecord = {
-			...record,
-			product_sku: randomProduct.sku,
-			customer_nif: randomCustomer.nif.toString(),
-		};
-
-		enrichedRecords.push(enrichedRecord);
-	}
-
-	return enrichedRecords;
-}
-
-console.log(`Found ${records.length} records in the original CSV`);
-
-const enrichedRecords = enrichData(records);
-
-const outputPath = new URL('./generated/golden_crust_enhanced.csv', import.meta.url);
-const csvOutput = csvStringify(enrichedRecords, { header: true });
-
-await writeFile(outputPath, csvOutput);
-
-console.log('Done');

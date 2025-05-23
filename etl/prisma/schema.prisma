@@ -16,9 +16,9 @@ model Sale {
 
   dateId         Int @map("date_id")
   customerId     Int @map("customer_id")
-  storeId        Int @map("store_id")
+  storeId        Int @map("store_id") @db.SmallInt
   productId      Int @map("product_id")
-  documentTypeId Int @map("document_type_id")
+  documentTypeId Int @map("document_type_id") @db.SmallInt
 
   date         Date         @relation(fields: [dateId], references: [id], onDelete: Cascade)
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -26,6 +26,14 @@ model Sale {
   product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
   documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
 
+  @@index([dateId])
+  @@index([customerId])
+  @@index([storeId])
+  @@index([productId])
+  @@index([documentTypeId])
+  @@index([dateId, productId])
+  @@index([dateId, storeId])
+  @@index([dateId, customerId])
   @@map("sales")
 }
 
@@ -39,15 +47,17 @@ model Date {
   sales Sale[]
 
   @@unique([year, month, day])
+  @@index([year, month])
   @@map("d_dates")
 }
 
 model Customer {
-  id    Int     @id @default(autoincrement())
-  nif   Int     @unique
-  name  String  @db.VarChar(64)
-  email String  @db.VarChar(320)
-  phone String? @db.VarChar(32)
+  id           Int      @id @default(autoincrement())
+  nif          Int      @unique
+  name         String   @db.VarChar(64)
+  email        String   @unique @db.VarChar(320)
+  phone        String?  @db.VarChar(32)
+  registeredAt DateTime @default(now()) @map("registered_at")
 
   sales     Sale[]
   addresses CustomerAddress[]
@@ -56,14 +66,16 @@ model Customer {
 }
 
 model CustomerAddress {
-  id         Int    @id @default(autoincrement())
-  address    String @db.VarChar(128)
-  city       String @db.VarChar(32)
-  postalCode String @map("postal_code") @db.VarChar(8)
+  id         Int      @id @default(autoincrement())
+  address    String   @db.VarChar(128)
+  city       String   @db.VarChar(40)
+  postalCode String   @map("postal_code") @db.VarChar(8)
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  customerNif Int      @map("customer_nif")
-  customer    Customer @relation(fields: [customerNif], references: [id], onDelete: Cascade)
+  customerId Int      @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
+  @@index([customerId])
   @@map("d_customer_addresses")
 }
 
@@ -87,6 +99,7 @@ model Product {
 
   sales Sale[]
 
+  @@index([name])
   @@map("d_products")
 }
 

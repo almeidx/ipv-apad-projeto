@@ -4,8 +4,9 @@
 	"scripts": {
 		"build": "tsc",
 		"generate-customer-pool": "node src/generate-customer-pool.ts",
-		"generate-mongo": "node src/mongo.ts",
-		"generate-postgres": "node src/postgres.ts",
+		"generate-mongo": "node --env-file=.env src/mongo.ts",
+		"generate-postgres": "node --env-file=.env src/postgres.ts",
+		"generate-csv": "node --env-file=.env src/csv.ts",
 		"postinstall": "prisma generate"
 	},
 	"dependencies": {

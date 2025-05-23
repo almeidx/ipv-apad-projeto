@@ -1,5 +1,6 @@
-import { PrismaClient } from "./generated/prisma/client.js"
+import { Prisma, PrismaClient } from "./generated/prisma/client.js"
 import { PrismaClient as PgPrismaClient } from "../../generators/src/generated/prisma/client.js";
+import type { MongoOrderDocument } from "../../generators/src/mongo.ts";
 import { MongoClient } from "mongodb";
 import assert from "node:assert";
 import { parse } from "csv-parse/sync";
@@ -27,10 +28,17 @@ interface CsvRecord {
 const csvData = await readFile(new URL('../../generators/src/generated/golden_crust_enhanced.csv', import.meta.url), 'utf8');
 const csvRecords: CsvRecord[] = parse(csvData, { columns: true, skipEmptyLines: true });
 
+const documentTypes = {
+	1: "Fatura",
+	2: "Recibo",
+	3: "Fatura Simplificada"
+} as const;
+
 try {
 	console.log("Starting ETL process...");
 
 	await loadDateDimension();
+	await loadDocumentTypeDimension();
 	await loadStoreDimension();
 	await loadCustomers();
 	await loadProducts();
@@ -70,13 +78,11 @@ async function loadDateDimension() {
 		});
 	}
 
-	csvRecords.forEach(record => {
+	for (const record of csvRecords) {
 		const date = new Date(record.sale_date);
 		const dateKey = getDateKey(date);
 		allDates.add(dateKey);
-	});
-
-	console.log(`Extracted ${allDates.size} unique dates from all data sources`);
+	}
 
 	function getDateKey(date: Date): string {
 		return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
@@ -94,7 +100,10 @@ async function loadDateDimension() {
 	const BATCH_SIZE = 1000;
 	for (let i = 0; i < dates.length; i += BATCH_SIZE) {
 		const batch = dates.slice(i, i + BATCH_SIZE);
-		await dataMartClient.date.createMany({ data: batch });
+		await dataMartClient.date.createMany({
+			data: batch,
+			skipDuplicates: true,
+		});
 	}
 
 	console.log(`Loaded ${dates.length} dates into date dimension`);
@@ -102,9 +111,9 @@ async function loadDateDimension() {
 
 async function loadStoreDimension() {
 	const stores = [
-		{ id: 1, location: 'Store PG', name: 'Postgres Store' },
-		{ id: 2, location: 'Store MONGO', name: 'MongoDB Store' },
-		{ id: 3, location: 'Store CSV', name: 'CSV Store' }
+		{ id: 1, location: 'Viseu', name: 'Doce Norte' },
+		{ id: 2, location: 'Lisboa', name: 'Aroma da Sé' },
+		{ id: 3, location: 'Coimbra', name: 'Pastel & Tradição' }
 	];
 
 	await dataMartClient.store.createMany({ data: stores });
@@ -112,29 +121,35 @@ async function loadStoreDimension() {
 	console.log(`Loaded ${stores.length} stores into store dimension`);
 }
 
+async function loadDocumentTypeDimension() {
+	const documentTypes_ = Object.entries(documentTypes).map(([id, name]) => ({
+		id: Number(id),
+		name
+	}));
+
+	await dataMartClient.documentType.createMany({ data: documentTypes_ });
+
+	console.log(`Loaded ${documentTypes_.length} document types into document type dimension`);
+}
+
 async function loadCustomers() {
-	const customersByNif = new Map<number, {
-		nif: number;
-		name: string;
-		email: string;
-		phone?: string;
-		address?: string;
-		city?: string;
-		postalCode?: string;
-	}>();
+	// First, load customers into the data mart
+	const customersByNif = new Map<number, Prisma.CustomerCreateManyInput>();
+
+	const emails = new Set<string>();
 
 	// 1. pg
 	{
 		const pgCustomers = await pgClient.customer.findMany();
 		for (const c of pgCustomers) {
+			emails.add(c.email);
+
 			customersByNif.set(c.nif, {
 				nif: c.nif,
 				name: `${c.firstName} ${c.lastName}`,
 				email: c.email,
 				phone: c.phone,
-				address: c.address,
-				city: c.city,
-				postalCode: c.postalCode
+				registeredAt: c.registeredAt.toISOString()
 			});
 		}
 	}
@@ -142,11 +157,20 @@ async function loadCustomers() {
 	// 2. mongo
 	{
 		const mongoDb = mongoClient.db("golden_crust");
-		const ordersCollection = mongoDb.collection("orders");
+
+		const ordersCollection = mongoDb.collection<MongoOrderDocument>("orders");
+
 		const mongoCustomers = await ordersCollection.distinct("customer");
 
 		for (const c of mongoCustomers) {
 			if (!customersByNif.has(c.nif)) {
+				if (emails.has(c.email)) {
+					const [localPart, host] = c.email.split('@');
+					c.email = `${localPart}+${Math.floor(Math.random() * 10000)}@${host}`;
+				} else {
+					emails.add(c.email);
+				}
+
 				customersByNif.set(c.nif, {
 					nif: c.nif,
 					name: c.name,
@@ -167,19 +191,154 @@ async function loadCustomers() {
 
 		for (const c of csvCustomers) {
 			if (!customersByNif.has(c.nif)) {
-				customersByNif.set(c.nif, c);
+				if (emails.has(c.email)) {
+					const [localPart, host] = c.email.split('@');
+					c.email = `${localPart}+${Math.floor(Math.random() * 10000)}@${host}`;
+				} else {
+					emails.add(c.email);
+				}
+
+				customersByNif.set(c.nif, {
+					nif: c.nif,
+					name: c.name,
+					email: c.email,
+				});
 			}
 		}
 	}
 
+	// Create customers first
 	const uniqueCustomers = Array.from(customersByNif.values());
-
 	await dataMartClient.customer.createMany({
 		data: uniqueCustomers,
 		// skipDuplicates: true
 	});
 
 	console.log(`Loaded ${uniqueCustomers.length} customers to data mart`);
+
+	// Now handle customer address history
+	console.log("Processing customer address history...");
+
+	// Create a map to store addresses by customer NIF
+	const addressesByCustomerNif = new Map<number, Array<{
+		address: string;
+		city: string;
+		postalCode: string;
+		createdAt: Date;
+	}>>();
+
+	// 1. Get address history from Postgres
+	const pgAddressHistory = await pgClient.customerAddress.findMany({
+		include: {
+			customer: true
+		}
+	});
+
+	for (const addr of pgAddressHistory) {
+		if (!addressesByCustomerNif.has(addr.customerNif)) {
+			addressesByCustomerNif.set(addr.customerNif, []);
+		}
+
+		addressesByCustomerNif.get(addr.customerNif)!.push({
+			address: addr.address,
+			city: addr.city,
+			postalCode: addr.postalCode,
+			createdAt: addr.createdAt
+		});
+	}
+
+	// 2. Get unique addresses from MongoDB orders
+	const mongoDb = mongoClient.db("golden_crust");
+	const ordersCollection = mongoDb.collection("orders");
+
+	const mongoAddresses = await ordersCollection.aggregate([
+		{
+			$group: {
+				_id: {
+					nif: "$customer.nif",
+					address: "$customer.address",
+					city: "$customer.city",
+					postalCode: "$customer.postal_code"
+				},
+				date: {
+					$min: {
+						$dateFromString: {
+							dateString: "$date",
+						},
+					},
+				},
+			}
+		}
+	]).toArray();
+
+	for (const addr of mongoAddresses) {
+		if (!addressesByCustomerNif.has(addr._id.nif)) {
+			addressesByCustomerNif.set(addr._id.nif, []);
+		}
+
+		// Check if this address already exists for this customer
+		const existingAddresses = addressesByCustomerNif.get(addr._id.nif)!;
+		const alreadyExists = existingAddresses.some(a =>
+			a.address === addr._id.address &&
+			a.city === addr._id.city &&
+			a.postalCode === addr._id.postalCode
+		);
+
+		if (!alreadyExists) {
+			existingAddresses.push({
+				address: addr._id.address,
+				city: addr._id.city,
+				postalCode: addr._id.postalCode,
+				createdAt: addr.date
+			});
+		}
+	}
+
+	// Sort address histories by creation date
+	for (const [nif, addresses] of addressesByCustomerNif.entries()) {
+		addresses.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+	}
+
+	// Get customer IDs from the database
+	const customerIdsByNif = new Map();
+	const customers = await dataMartClient.customer.findMany();
+	for (const c of customers) {
+		if (c.nif) customerIdsByNif.set(c.nif, c.id);
+	}
+
+	// Create customer addresses in batches
+	const customerAddresses: Prisma.CustomerAddressCreateManyInput[] = [];
+
+	for (const [nif, addresses] of addressesByCustomerNif.entries()) {
+		const customerId = customerIdsByNif.get(nif);
+		if (!customerId) {
+			console.warn(`Cannot find customer ID for NIF ${nif}, skipping addresses`);
+			process.exit(1);
+		}
+
+		for (const addr of addresses) {
+			customerAddresses.push({
+				customerId,
+				address: addr.address,
+				city: addr.city,
+				postalCode: addr.postalCode,
+				createdAt: addr.createdAt.toISOString(), // Idk why but it's not accepting a date instance
+			});
+		}
+	}
+
+	// Insert customer addresses in batches
+	const ADDRESS_BATCH_SIZE = 1000;
+	for (let i = 0; i < customerAddresses.length; i += ADDRESS_BATCH_SIZE) {
+		const batch = customerAddresses.slice(i, i + ADDRESS_BATCH_SIZE);
+		await dataMartClient.customerAddress.createMany({
+			data: batch,
+			// skipDuplicates: true
+		});
+		console.log(`Loaded batch ${i / ADDRESS_BATCH_SIZE + 1} of customer addresses (${batch.length} records)`);
+	}
+
+	console.log(`Loaded ${customerAddresses.length} customer addresses to data mart`);
 }
 
 async function loadProducts() {
@@ -260,17 +419,15 @@ async function loadSales() {
 		dateMap.set(key, d.id);
 	});
 
-	const customerMap = new Map();
-	const customers = await dataMartClient.customer.findMany();
-	customers.forEach(c => {
-		if (c.nif) customerMap.set(c.nif, c.id);
-	});
+	const customerMap = new Map<number, number>();
+	for (const { nif, id } of await dataMartClient.customer.findMany({ select: { nif: true, id: true } })) {
+		customerMap.set(nif, id);
+	}
 
-	const productMap = new Map();
-	const products = await dataMartClient.product.findMany();
-	products.forEach(p => {
-		if (p.sku) productMap.set(p.sku, p.id);
-	});
+	const productMap = new Map<string, number>();
+	for (const { sku, id } of await dataMartClient.product.findMany({ select: { sku: true, id: true } })) {
+		productMap.set(sku, id);
+	}
 
 	const PG_STORE_ID = 1;
 	const MONGO_STORE_ID = 2;
@@ -278,7 +435,7 @@ async function loadSales() {
 
 	const pgOrders = [];
 	try {
-		const FETCH_BATCH_SIZE = 250;
+		const FETCH_BATCH_SIZE = 1000;
 		let skip = 0;
 		let batchCount = 0;
 		let batch;
@@ -327,11 +484,12 @@ async function loadSales() {
 
 	const mongoDb = mongoClient.db("golden_crust");
 	const ordersCollection = mongoDb.collection("orders");
-	const mongoOrders = await ordersCollection.find({}).toArray();
+	const mongoOrders = await ordersCollection.find().toArray();
 
 	const csvSales = csvRecords;
 
-	const pgSalesData = [];
+	const pgSalesData: Prisma.SaleCreateManyInput[] = [];
+
 	for (const order of pgOrders) {
 		for (const item of order.items) {
 			const saleDate = order.createdAt;
@@ -339,20 +497,17 @@ async function loadSales() {
 			const dateId = dateMap.get(dateKey);
 
 			if (!dateId) {
-				console.warn(`Date not found for ${dateKey}, skipping sale`);
-				continue;
+				throw new Error(`Date not found for ${dateKey}`);
 			}
 
 			const customerId = customerMap.get(order.customerNif);
 			if (!customerId) {
-				console.warn(`Customer not found for NIF ${order.customerNif}, skipping sale`);
-				continue;
+				throw new Error(`Customer not found for NIF ${order.customerNif}`);
 			}
 
 			const productId = productMap.get(item.product.sku);
 			if (!productId) {
-				console.warn(`Product not found for SKU ${item.product.sku}, skipping sale`);
-				continue;
+				throw new Error(`Product not found for SKU ${item.product.sku}`);
 			}
 
 			pgSalesData.push({
@@ -360,35 +515,34 @@ async function loadSales() {
 				customerId,
 				productId,
 				storeId: PG_STORE_ID,
+				documentTypeId: order.documentTypeId,
 				quantity: item.quantity,
 				unitPrice: item.product.price,
-				totalAmount: item.quantity * item.product.price
+				totalAmount: item.quantity * item.product.price,
 			});
 		}
 	}
 
-	const mongoSalesData = [];
+	const mongoSalesData: Prisma.SaleCreateManyInput[] = [];
+
 	for (const order of mongoOrders) {
 		const orderDate = new Date(order.date);
 		const dateKey = `${orderDate.getFullYear()}-${(orderDate.getMonth() + 1).toString().padStart(2, '0')}-${orderDate.getDate().toString().padStart(2, '0')}`;
 		const dateId = dateMap.get(dateKey);
 
 		if (!dateId) {
-			console.warn(`Date not found for ${dateKey}, skipping sale`);
-			continue;
+			throw new Error(`Date not found for ${dateKey}`);
 		}
 
 		const customerId = customerMap.get(order.customer.nif);
 		if (!customerId) {
-			console.warn(`Customer not found for NIF ${order.customer.nif}, skipping sale`);
-			continue;
+			throw new Error(`Customer not found for NIF ${order.customer.nif}`);
 		}
 
 		for (const item of order.items) {
 			const productId = productMap.get(item.product.sku);
 			if (!productId) {
-				console.warn(`Product not found for SKU ${item.product.sku}, skipping sale`);
-				continue;
+				throw new Error(`Product not found for SKU ${item.product.sku}`);
 			}
 
 			mongoSalesData.push({
@@ -396,6 +550,7 @@ async function loadSales() {
 				customerId,
 				productId,
 				storeId: MONGO_STORE_ID,
+				documentTypeId: convertMongoDocumentTypeToId(order.document_type),
 				quantity: item.qty,
 				unitPrice: item.product.price,
 				totalAmount: item.qty * item.product.price
@@ -403,37 +558,51 @@ async function loadSales() {
 		}
 	}
 
-	const csvSalesData = [];
+	function convertMongoDocumentTypeToId(documentType: string): number {
+		switch (documentType) {
+			case "fatura":
+				return 1;
+			case "recibo":
+				return 2;
+			case "fatura_simplificada":
+				return 3;
+			default:
+				throw new Error(`Unknown document type: ${documentType}`);
+		}
+	}
+
+	const csvSalesData: Prisma.SaleCreateManyInput[] = [];
+
 	for (const record of csvSales) {
 		const saleDate = new Date(record.sale_date);
 		const dateKey = `${saleDate.getFullYear()}-${(saleDate.getMonth() + 1).toString().padStart(2, '0')}-${saleDate.getDate().toString().padStart(2, '0')}`;
 		const dateId = dateMap.get(dateKey);
 
 		if (!dateId) {
-			console.warn(`Date not found for ${dateKey}, skipping sale`);
-			continue;
+			throw new Error(`Date not found for ${dateKey}`);
 		}
 
-		const customerId = customerMap.get(record.customer_nif);
+		const customerId = customerMap.get(Number.parseInt(record.customer_nif, 10));
 		if (!customerId) {
-			console.warn(`Customer not found for NIF ${record.customer_nif}, skipping sale`);
-			continue;
+			throw new Error(`Customer not found for NIF ${record.customer_nif}`);
 		}
 
 		const productId = productMap.get(record.product_sku);
 		if (!productId) {
-			console.warn(`Product not found for SKU ${record.product_sku}, skipping sale`);
-			continue;
+			throw new Error(`Product not found for SKU ${record.product_sku}`);
 		}
+
+		const productUnitPrice = Number.parseFloat(record.product_unit_price);
 
 		csvSalesData.push({
 			dateId,
 			customerId,
 			productId,
 			storeId: CSV_STORE_ID,
-			quantity: parseInt(record.product_qty),
-			unitPrice: parseFloat(record.product_unit_price),
-			totalAmount: parseInt(record.product_qty) * parseFloat(record.product_unit_price)
+			documentTypeId: 2, // Assuming all csv records are receipts only
+			quantity: Number.parseInt(record.product_qty),
+			unitPrice: productUnitPrice,
+			totalAmount: Number.parseInt(record.product_qty) * productUnitPrice
 		});
 	}
 

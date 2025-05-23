@@ -15,9 +15,9 @@ console.time("deleting old data");
 await prisma.orderItem.deleteMany();
 await prisma.order.deleteMany();
 await prisma.product.deleteMany();
+await prisma.customerAddress.deleteMany();
 await prisma.customer.deleteMany();
 await prisma.documentType.deleteMany();
-await prisma.customerAddress.deleteMany();
 
 console.timeEnd("deleting old data");
 
@@ -46,18 +46,34 @@ const jsonCustomers = faker.helpers.arrayElements(customersJson as CustomersJson
 
 // Generate random customers for the remaining 30%
 const randomCustomersCount = CUSTOMER_COUNT - jsonCustomers.length;
-const randomCustomers = Array.from({ length: randomCustomersCount }, () => ({
-	nif: faker.number.int({ min: 100000000, max: 999999999 }),
-	firstName: faker.person.firstName(),
-	lastName: faker.person.lastName(),
-	email: faker.internet.email(),
-	phone: faker.phone.number(),
-	address: faker.location.streetAddress(),
-	city: faker.location.city(),
-	postalCode: faker.location.zipCode(),
-}));
 
-// Combine both sets of customers
+const usedEmails = new Set(jsonCustomers.map(customer => customer.email.toLowerCase()));
+const usedNifs = new Set(jsonCustomers.map(customer => customer.nif));
+
+const randomCustomers = Array.from({ length: randomCustomersCount }, () => {
+	let email: string;
+	do {
+		email = faker.internet.email().toLowerCase();
+	} while (usedEmails.has(email));
+	usedEmails.add(email);
+
+	let nif: number;
+	do {
+		nif = faker.number.int({ min: 100_000_000, max: 999_999_999 });
+	} while (usedNifs.has(nif));
+
+	return {
+		nif,
+		firstName: faker.person.firstName(),
+		lastName: faker.person.lastName(),
+		email,
+		phone: faker.phone.number(),
+		address: faker.location.streetAddress(),
+		city: faker.location.city(),
+		postalCode: faker.location.zipCode(),
+	};
+});
+
 const allCustomerData = [...jsonCustomers, ...randomCustomers];
 
 const customers: Prisma.CustomerCreateInput[] = allCustomerData.map((customer) => ({
@@ -114,12 +130,11 @@ await prisma.product.createMany({ data: products });
 console.timeEnd("seed:products");
 
 console.time("seed:customers");
-await prisma.customer.createMany({ data: customers });
+await prisma.customer.createMany({ data: customers, skipDuplicates: true });
 console.timeEnd("seed:customers");
 
 console.time("seed:address-history");
 const initialAddressRecords = customers.map(customer => {
-	// For JSON customers, use their original address
 	const jsonCustomer = (customersJson as CustomersJsonItem[]).find(c => c.nif === customer.nif);
 	if (jsonCustomer) {
 		return {
@@ -130,8 +145,7 @@ const initialAddressRecords = customers.map(customer => {
 			createdAt: customer.registeredAt!,
 		};
 	}
-	
-	// For random customers, generate a new address
+
 	return {
 		customerNif: customer.nif,
 		address: faker.location.streetAddress(),
@@ -146,17 +160,23 @@ const customersWithHistory = faker.helpers.arrayElements(customers, {
 	max: Math.floor(CUSTOMER_COUNT * 0.15),
 });
 
-const additionalAddressRecords = [];
+const additionalAddressRecords: {
+	customerNif: number;
+	address: string;
+	city: string;
+	postalCode: string;
+	createdAt: Date;
+}[] = [];
 
 for (const customer of customersWithHistory) {
 	const changeCount = faker.number.int({ min: 1, max: 3 });
-	
+
 	for (let i = 0; i < changeCount; i++) {
 		const createdAt = faker.date.between({
 			from: customer.registeredAt!,
 			to: new Date(),
 		});
-		
+
 		additionalAddressRecords.push({
 			customerNif: customer.nif,
 			address: faker.location.streetAddress(),
@@ -167,7 +187,7 @@ for (const customer of customersWithHistory) {
 	}
 }
 
-// Insert in batches to avoid too large SQL statements
+// Inserting all at once breaks. Batch them instead
 const ADDRESS_BATCH_SIZE = 1000;
 const allAddressRecords = [...initialAddressRecords, ...additionalAddressRecords];
 
