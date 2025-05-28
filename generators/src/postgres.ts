@@ -34,7 +34,7 @@ const products: (Prisma.ProductCreateInput & { id: number })[] = faker.helpers
 		name: product.name,
 		description: product.description,
 		price: product.price,
-		createdAt: faker.date.past(),
+		createdAt: faker.date.past({ years: 5 }),
 	}));
 
 // Use about 70% of customers from JSON, rest will be random
@@ -82,7 +82,7 @@ const customers: Prisma.CustomerCreateInput[] = allCustomerData.map((customer) =
 	lastName: customer.lastName,
 	email: customer.email,
 	phone: customer.phone,
-	registeredAt: faker.date.past(),
+	registeredAt: faker.date.past({ years: 5 }),
 }));
 
 const documentTypes = [
@@ -105,9 +105,7 @@ for (let id = 1; id <= ORDER_COUNT; id++) {
 		id,
 		customerNif: faker.helpers.arrayElement(customers).nif,
 		documentTypeId: faker.helpers.arrayElement(documentTypes).id,
-
-		total: Number.parseFloat(faker.commerce.price()),
-		createdAt: faker.date.past(),
+		createdAt: faker.date.past({ years: 5 }),
 
 		items: Array.from({ length: faker.number.int({ min: 1, max: 10 }) }, () => {
 			let productId: number;

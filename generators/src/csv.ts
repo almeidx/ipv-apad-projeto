@@ -71,6 +71,8 @@ const enrichedRecords: EnrichedRecord[] = [];
 	for (const record of records) {
 		const enrichedRecord: EnrichedRecord = {
 			...record,
+			// Scale down price as it's way too high in the original data
+			product_unit_price: (Number.parseFloat(record.product_unit_price) / 10).toFixed(2), 
 			product_sku: faker.helpers.arrayElement(productSkusArray),
 			customer_nif: faker.helpers.arrayElement(customerNifsArray).toString(),
 		};

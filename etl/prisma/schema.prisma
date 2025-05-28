@@ -13,6 +13,7 @@ model Sale {
   quantity    Int    @db.SmallInt
   unitPrice   Float  @map("unit_price")
   totalAmount Float  @map("total_amount")
+  documentNum Int    @map("document_num")
 
   dateId         Int @map("date_id")
   customerId     Int @map("customer_id")
@@ -34,6 +35,7 @@ model Sale {
   @@index([dateId, productId])
   @@index([dateId, storeId])
   @@index([dateId, customerId])
+  @@index([documentNum])
   @@map("sales")
 }
 

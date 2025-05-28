@@ -433,6 +433,8 @@ async function loadSales() {
 	const MONGO_STORE_ID = 2;
 	const CSV_STORE_ID = 3;
 
+	let currentDocumentNum = 100_000_000;
+
 	const pgOrders = [];
 	try {
 		const FETCH_BATCH_SIZE = 1000;
@@ -491,6 +493,7 @@ async function loadSales() {
 	const pgSalesData: Prisma.SaleCreateManyInput[] = [];
 
 	for (const order of pgOrders) {
+		const documentNum = currentDocumentNum++;
 		for (const item of order.items) {
 			const saleDate = order.createdAt;
 			const dateKey = `${saleDate.getFullYear()}-${(saleDate.getMonth() + 1).toString().padStart(2, '0')}-${saleDate.getDate().toString().padStart(2, '0')}`;
@@ -511,6 +514,7 @@ async function loadSales() {
 			}
 
 			pgSalesData.push({
+				documentNum,
 				dateId,
 				customerId,
 				productId,
@@ -526,6 +530,7 @@ async function loadSales() {
 	const mongoSalesData: Prisma.SaleCreateManyInput[] = [];
 
 	for (const order of mongoOrders) {
+		const documentNum = currentDocumentNum++;
 		const orderDate = new Date(order.date);
 		const dateKey = `${orderDate.getFullYear()}-${(orderDate.getMonth() + 1).toString().padStart(2, '0')}-${orderDate.getDate().toString().padStart(2, '0')}`;
 		const dateId = dateMap.get(dateKey);
@@ -546,6 +551,7 @@ async function loadSales() {
 			}
 
 			mongoSalesData.push({
+				documentNum,
 				dateId,
 				customerId,
 				productId,
@@ -573,6 +579,9 @@ async function loadSales() {
 
 	const csvSalesData: Prisma.SaleCreateManyInput[] = [];
 
+	// Group CSV sales by date and customer to create document groups
+	const csvDocumentGroups = new Map<string, number>();
+
 	for (const record of csvSales) {
 		const saleDate = new Date(record.sale_date);
 		const dateKey = `${saleDate.getFullYear()}-${(saleDate.getMonth() + 1).toString().padStart(2, '0')}-${saleDate.getDate().toString().padStart(2, '0')}`;
@@ -594,7 +603,16 @@ async function loadSales() {
 
 		const productUnitPrice = Number.parseFloat(record.product_unit_price);
 
+		// Since the CSV only has one product per line, try to match by customer and date.
+		const orderGroupKey = `${dateKey}-${customerId}`;
+		let documentNum = csvDocumentGroups.get(orderGroupKey);
+		if (!documentNum) {
+			documentNum = currentDocumentNum++;
+			csvDocumentGroups.set(orderGroupKey, documentNum);
+		}
+
 		csvSalesData.push({
+			documentNum,
 			dateId,
 			customerId,
 			productId,
@@ -611,8 +629,7 @@ async function loadSales() {
 	for (let i = 0; i < pgSalesData.length; i += BATCH_SIZE) {
 		const batch = pgSalesData.slice(i, i + BATCH_SIZE);
 		await dataMartClient.sale.createMany({
-			data: batch,
-			// skipDuplicates: true
+			data: batch
 		});
 		console.log(`Loaded batch ${i / BATCH_SIZE + 1} of PostgreSQL sales (${batch.length} records)`);
 	}
@@ -620,8 +637,7 @@ async function loadSales() {
 	for (let i = 0; i < mongoSalesData.length; i += BATCH_SIZE) {
 		const batch = mongoSalesData.slice(i, i + BATCH_SIZE);
 		await dataMartClient.sale.createMany({
-			data: batch,
-			// skipDuplicates: true
+			data: batch
 		});
 		console.log(`Loaded batch ${i / BATCH_SIZE + 1} of MongoDB sales (${batch.length} records)`);
 	}
@@ -629,8 +645,7 @@ async function loadSales() {
 	for (let i = 0; i < csvSalesData.length; i += BATCH_SIZE) {
 		const batch = csvSalesData.slice(i, i + BATCH_SIZE);
 		await dataMartClient.sale.createMany({
-			data: batch,
-			// skipDuplicates: true
+			data: batch
 		});
 		console.log(`Loaded batch ${i / BATCH_SIZE + 1} of CSV sales (${batch.length} records)`);
 	}

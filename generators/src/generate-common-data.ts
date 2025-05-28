@@ -58,7 +58,7 @@ export const seededFaker = new Faker({
 			id,
 			name: seededFaker.commerce.productName(),
 			sku,
-			price: Number.parseFloat(seededFaker.commerce.price({ min: 1, max: 100, dec: 2 })),
+			price: Number.parseFloat(seededFaker.commerce.price({ min: 1, max: 15, dec: 2 })),
 			description: seededFaker.commerce.productDescription(),
 			material: seededFaker.commerce.productMaterial(),
 		});

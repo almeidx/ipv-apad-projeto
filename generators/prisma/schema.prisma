@@ -3,10 +3,6 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
-generator erd {
-  provider = "prisma-erd-generator"
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("POSTGRES_URI")
@@ -22,21 +18,21 @@ model Customer {
 
   registeredAt DateTime @default(now()) @map("registered_at")
 
-  orders Order[]
+  orders         Order[]
   addressHistory CustomerAddress[]
 
   @@map("customers")
 }
 
 model CustomerAddress {
-  id        Int      @id @default(autoincrement())
-  address   String
-  city      String
-  postalCode String  @map("postal_code")
-  createdAt DateTime @default(now()) @map("created_at")
-  
+  id         Int      @id @default(autoincrement())
+  address    String
+  city       String
+  postalCode String   @map("postal_code")
+  createdAt  DateTime @default(now()) @map("created_at")
+
   customerNif Int
-  customer   Customer @relation(fields: [customerNif], references: [nif], onDelete: Cascade)
+  customer    Customer @relation(fields: [customerNif], references: [nif], onDelete: Cascade)
 
   @@index([customerNif])
   @@map("customer_addresses")
@@ -59,7 +55,6 @@ model Product {
 
 model Order {
   id        BigInt   @id @default(autoincrement())
-  total     Float
   createdAt DateTime @default(now()) @map("created_at")
 
   customerNif    Int @map("customer_nif")

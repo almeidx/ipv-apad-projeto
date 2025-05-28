@@ -3,11 +3,15 @@
 	"type": "module",
 	"scripts": {
 		"build": "tsc",
-		"generate-customer-pool": "node src/generate-customer-pool.ts",
-		"generate-mongo": "node --env-file=.env src/mongo.ts",
-		"generate-postgres": "node --env-file=.env src/postgres.ts",
-		"generate-csv": "node --env-file=.env src/csv.ts",
-		"postinstall": "prisma generate"
+		"db:generate": "prisma generate",
+		"db:migrate": "env-cmd -f ../.env prisma migrate dev",
+		"db:migrate:prod": "env-cmd -f ../.env prisma migrate deploy",
+		"db:reset": "env-cmd -f ../.env prisma migrate reset",
+		"generate-common": "node src/generate-common-data.ts",
+		"generate-csv": "node --env-file=../.env src/csv.ts",
+		"generate-mongo": "node --env-file=../.env src/mongo.ts",
+		"generate-postgres": "node --env-file=../.env src/postgres.ts",
+		"postinstall": "pnpm run db:generate"
 	},
 	"dependencies": {
 		"@faker-js/faker": "^9.8.0",
@@ -17,14 +21,13 @@
 		"mongodb": "^6.16.0"
 	},
 	"devDependencies": {
-		"@mermaid-js/mermaid-cli": "^11.4.2",
-		"@types/node": "^22.15.20",
+		"@types/node": "^22.15.24",
+		"env-cmd": "^10.1.0",
 		"prisma": "^6.8.2",
-		"prisma-erd-generator": "^2.0.4",
 		"typescript": "^5.8.3"
 	},
 	"packageManager": "pnpm@10.11.0",
 	"engines": {
-		"node": "^24.0.2"
+		"node": ">=24.1.0"
 	}
 }

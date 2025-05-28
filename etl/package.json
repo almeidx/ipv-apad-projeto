@@ -1,11 +1,14 @@
 {
   "name": "etl",
-  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "postinstall": "prisma generate",
-    "start": "node --env-file=.env src/index.ts"
+    "db:generate": "prisma generate",
+    "db:migrate": "env-cmd -f ../.env prisma migrate dev",
+    "db:migrate:prod": "env-cmd -f ../.env prisma migrate deploy",
+    "db:reset": "env-cmd -f ../.env prisma migrate reset",
+    "postinstall": "pnpm run db:generate",
+    "start": "node --env-file=../.env src/index.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.8.2",
@@ -14,8 +17,12 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.20",
+    "env-cmd": "^10.1.0",
     "prisma": "^6.8.2",
     "typescript": "^5.8.3"
   },
-  "packageManager": "pnpm@10.11.0"
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=24.1.0"
+  }
 }

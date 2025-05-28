@@ -106,7 +106,7 @@ for (let i = 0; i < ORDER_COUNT; i += BATCH_SIZE) {
 			qty: faker.number.int({ min: 1, max: 5 }),
 		}), { count: faker.number.int({ min: 1, max: MAX_ORDER_ITEM_COUNT }) });
 
-		const orderDate = faker.date.past();
+		const orderDate = faker.date.past({ years: 5 });
 
 		const total = orderItems.reduce((acc, item) => acc + item.product.price * item.qty, 0);
 
