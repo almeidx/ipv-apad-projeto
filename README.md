@@ -16,9 +16,6 @@ This project is structured as follows:
 For this project, you'll need a PostgreSQL DBMS (or two separate instances) and a MongoDB database.
 
 1. Rename the `.env.example` file to `.env` and update the connection strings as needed.
-<!-- 1. Run the data generators
-1. Run the ETL script
-1. Run the OLAP script -->
 
 ### Data generators
 
