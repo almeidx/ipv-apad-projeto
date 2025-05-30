@@ -46,7 +46,7 @@ Navigate to the `./olap` directory and run the following commands:
 
 ```bash
 python3.13 -m pip install -r requirements.txt
-streamlit run app.py
+python3.13 -m streamlit run app.py
 ```
 
 This should open up the Streamlit app in your browser, allowing you to interact with the OLAP queries and visualizations.
