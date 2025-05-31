@@ -68,8 +68,6 @@ def run_query(query):
             conn.close()
     return None
 
-st.markdown("<h1>📊 OLAP - Gestão de Vendas</h1>", unsafe_allow_html=True)
-
 st.sidebar.title("📌 Menu")
 opcao = st.sidebar.radio("Selecione uma opção:", [
     "🏬 Vendas por Loja",
@@ -399,9 +397,7 @@ elif opcao == "📅 Vendas por Datas":
         st.info("Sem dados para exibir. Tente ajustar os filtros.")
 
 elif opcao == "🔍 Visão Analítica":
-    st.header("Visão Analítica Multidimensional")
-
-    st.subheader("Operações OLAP")
+    st.header("Visão Analítica de Vendas")
 
     olap_tab = st.tabs(["Slice", "Dice", "Drill-down", "Roll-up", "Pivot"])
 
@@ -445,7 +441,6 @@ elif opcao == "🔍 Visão Analítica":
                 slice_results = run_query(slice_query)
                 if slice_results:
                     slice_df = to_dataframe(slice_results, ["Período", "Total Vendas"])
-                    st.write(f"Resultados do Slice para {slice_dim} = {slice_value}:")
 
                     fig = px.bar(
                         slice_df,
@@ -530,7 +525,6 @@ elif opcao == "🔍 Visão Analítica":
             dice_results = run_query(dice_query)
             if dice_results:
                 dice_df = to_dataframe(dice_results, ["Período", "Total Vendas"])
-                st.write(f"Resultados do Dice para {dice_dim1}={dice_value1} e {dice_dim2}={dice_value2}:")
 
                 fig = px.line(
                     dice_df,
@@ -804,7 +798,7 @@ elif opcao == "🔍 Visão Analítica":
 
             csv = pivot_df.reset_index().to_csv(index=False).encode('utf-8')
             st.download_button(
-                "Baixar Tabela Pivô (CSV)",
+                "Descarregar Tabela Pivô (CSV)",
                 data=csv,
                 file_name=f"pivot_{pivot_rows}_{pivot_cols}.csv",
                 mime='text/csv',
@@ -812,128 +806,11 @@ elif opcao == "🔍 Visão Analítica":
         else:
             st.info("Sem dados suficientes para criar a tabela pivô.")
 
-    st.markdown("---")
-    st.header("Análise Multidimensional Personalizada")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        dim1 = st.selectbox(
-            "Dimensão Primária",
-            ["Loja", "Produto", "Cliente", "Tipo de Documento", "Data (Mês)", "Data (Ano)"]
-        )
-
-    with col2:
-        dim2 = st.selectbox(
-            "Dimensão Secundária (opcional)",
-            ["Nenhuma", "Loja", "Produto", "Cliente", "Tipo de Documento", "Data (Mês)", "Data (Ano)"],
-            index=0
-        )
-
-    dim_map = {
-        "Loja": ("st.name", "d_stores st ON s.store_id = st.id"),
-        "Produto": ("p.name", "d_products p ON s.product_id = p.id"),
-        "Cliente": ("c.name", "d_customers c ON s.customer_id = c.id"),
-        "Tipo de Documento": ("dt.name", "d_document_types dt ON s.document_type_id = dt.id"),
-        "Data (Mês)": ("TO_CHAR(MAKE_DATE(d.year, d.month, 1), 'MM/YYYY')", "d_dates d ON s.date_id = d.id"),
-        "Data (Ano)": ("d.year::text", "d_dates d ON s.date_id = d.id")
-    }
-
-    select_dim1 = dim_map[dim1][0] + " as dim1"
-    join_dim1 = dim_map[dim1][1]
-
-    if dim2 != "Nenhuma" and dim2 != dim1:
-        select_dim2 = ", " + dim_map[dim2][0] + " as dim2"
-        join_dim2 = dim_map[dim2][1] if dim_map[dim2][1] not in join_dim1 else ""
-        group_by = "dim1, dim2"
-        order_by = "total_sales DESC, dim1, dim2"
-    else:
-        select_dim2 = ""
-        join_dim2 = ""
-        group_by = "dim1"
-        order_by = "total_sales DESC, dim1"
-
-    joins = f"""
-    JOIN {join_dim1}
-    {f'JOIN {join_dim2}' if join_dim2 else ''}
-    """
-
-    query = f"""
-    SELECT {select_dim1}{select_dim2},
-           SUM(s.total_amount) as total_sales,
-           COUNT(s.id) as num_transactions,
-           AVG(s.total_amount) as avg_transaction_value,
-           SUM(s.quantity) as total_quantity
-    FROM sales s
-    {joins}
-    WHERE 1=1 {date_filter}
-    GROUP BY {group_by}
-    ORDER BY {order_by}
-    LIMIT 100
-    """
-
-    results = run_query(query)
-
-    if dim2 != "Nenhuma" and dim2 != dim1:
-        df = to_dataframe(results, [dim1, dim2, "Total Vendas", "Num. Transações", "Valor Médio", "Quantidade"])
-    else:
-        df = to_dataframe(results, [dim1, "Total Vendas", "Num. Transações", "Valor Médio", "Quantidade"])
-
-    if not df.empty:
-        if dim2 != "Nenhuma" and dim2 != dim1:
-            fig1 = px.treemap(
-                df,
-                path=[dim1, dim2],
-                values="Total Vendas",
-                color="Total Vendas",
-                title=f"Análise de Vendas por {dim1} e {dim2}",
-                hover_data=["Num. Transações", "Quantidade"]
-            )
-            st.plotly_chart(fig1, use_container_width=True)
-
-            pivot_df = df.pivot_table(
-                index=dim1,
-                columns=dim2,
-                values="Total Vendas",
-                aggfunc="sum",
-                fill_value=0
-            )
-
-            st.subheader(f"Tabela Pivô: {dim1} vs {dim2}")
-            st.dataframe(pivot_df.style.background_gradient(cmap="Blues").format("{:.2f} €"))
-
-        else:
-            fig1 = px.bar(
-                df.sort_values("Total Vendas", ascending=False).head(15),
-                x=dim1,
-                y="Total Vendas",
-                title=f"Análise de Vendas por {dim1}",
-                color="Total Vendas",
-                text="Total Vendas",
-                labels={"Total Vendas": "Montante Total (€)"}
-            )
-            fig1.update_layout(xaxis={'categoryorder':'total descending'})
-            fig1.update_traces(texttemplate='%{text:.2f} €', textposition='outside')
-            st.plotly_chart(fig1, use_container_width=True)
-
-        st.subheader("Resumo Estatístico")
-        st.dataframe(df.describe().style.format("{:.2f}"))
-
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            "Baixar Dados (CSV)",
-            data=csv,
-            file_name=f"analise_{dim1.lower()}_{dim2.lower() if dim2 != 'Nenhuma' else 'sem_dim2'}.csv",
-            mime='text/csv',
-        )
-    else:
-        st.info("Sem dados para exibir. Tente ajustar os filtros.")
-
 st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: gray; font-size: 14px;'>
-        OLAP - Gestão de Vendas | Desenvolvido com Streamlit | Dados em PostgreSQL
+        OLAP - Gestão de Vendas | Realizado por estgv13398, estgv17434, pv23905, pv23911
     </div>
     """,
     unsafe_allow_html=True
