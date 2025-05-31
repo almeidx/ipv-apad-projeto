@@ -399,9 +399,15 @@ elif opcao == "📅 Vendas por Datas":
 elif opcao == "🔍 Visão Analítica":
     st.header("Visão Analítica de Vendas")
 
-    olap_tab = st.tabs(["Slice", "Dice", "Drill-down", "Roll-up", "Pivot"])
+    # Replace the tabs implementation
+    tab_selection = st.radio("Selecione a operação OLAP:",
+                           ["Slice", "Dice", "Drill-down", "Roll-up", "Pivot"],
+                           horizontal=True)
 
-    with olap_tab[0]:  # Slice
+    st.markdown("---")
+
+    if tab_selection == "Slice":
+        # Slice content
         slice_dim = st.selectbox("Selecione a dimensão para filtrar:",
                                ["Loja", "Produto", "Cliente", "Tipo de Documento", "Ano"])
 
@@ -454,7 +460,8 @@ elif opcao == "🔍 Visão Analítica":
                 else:
                     st.info("Sem dados para este filtro.")
 
-    with olap_tab[1]:  # Dice
+    elif tab_selection == "Dice":
+        # Dice content
         col1, col2 = st.columns(2)
 
         with col1:
@@ -539,7 +546,8 @@ elif opcao == "🔍 Visão Analítica":
             else:
                 st.info("Sem dados para os filtros selecionados.")
 
-    with olap_tab[2]:  # Drill-down
+    elif tab_selection == "Drill-down":
+        # Drill-down content
         drill_levels = ["Ano", "Mês", "Dia"]
         current_level = st.selectbox("Selecione o nível de detalhe:", drill_levels, index=0)
 
@@ -596,7 +604,8 @@ elif opcao == "🔍 Visão Analítica":
         else:
             st.info("Sem dados para este nível de detalhe.")
 
-    with olap_tab[3]:  # Roll-up
+    elif tab_selection == "Roll-up":
+        # Roll-up content
         rollup_options = ["Produto → Categoria", "Dia → Mês → Ano", "Loja → Localização"]
         rollup_choice = st.radio("Selecione o tipo de roll-up:", rollup_options)
 
@@ -719,7 +728,8 @@ elif opcao == "🔍 Visão Analítica":
             else:
                 st.info("Sem dados para agrupamento por localização.")
 
-    with olap_tab[4]:  # Pivot
+    elif tab_selection == "Pivot":
+        # Pivot content
         col1, col2 = st.columns(2)
 
         with col1:
