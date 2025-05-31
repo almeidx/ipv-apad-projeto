@@ -548,7 +548,7 @@ elif opcao == "🔍 Visão Analítica":
 
     elif tab_selection == "Drill-down":
         # Drill-down content
-        drill_levels = ["Ano", "Mês", "Dia"]
+        drill_levels = ["Ano", "Trimestre", "Mês", "Dia"]
         current_level = st.selectbox("Selecione o nível de detalhe:", drill_levels, index=0)
 
         if current_level == "Ano":
@@ -561,6 +561,17 @@ elif opcao == "🔍 Visão Analítica":
             ORDER BY d.year
             """
             period_label = "Ano"
+        elif current_level == "Trimestre":
+            drill_query = f"""
+            SELECT d.year::text || '-Q' || CEILING(d.month::numeric / 3)::text as period,
+                   SUM(s.total_amount) as total_sales
+            FROM sales s
+            JOIN d_dates d ON s.date_id = d.id
+            WHERE 1=1 {date_filter}
+            GROUP BY d.year, CEILING(d.month::numeric / 3)
+            ORDER BY d.year, CEILING(d.month::numeric / 3)
+            """
+            period_label = "Trimestre"
         elif current_level == "Mês":
             drill_query = f"""
             SELECT TO_CHAR(MAKE_DATE(d.year, d.month, 1), 'MM/YYYY') as period,
@@ -606,7 +617,7 @@ elif opcao == "🔍 Visão Analítica":
 
     elif tab_selection == "Roll-up":
         # Roll-up content
-        rollup_options = ["Produto → Categoria", "Dia → Mês → Ano", "Loja → Localização"]
+        rollup_options = ["Produto → Material", "Dia → Mês → Ano", "Loja → Localização"]
         rollup_choice = st.radio("Selecione o tipo de roll-up:", rollup_options)
 
         if rollup_choice == "Dia → Mês → Ano":
@@ -666,7 +677,7 @@ elif opcao == "🔍 Visão Analítica":
             else:
                 st.info("Sem dados para esta granularidade.")
 
-        elif rollup_choice == "Produto → Categoria":
+        elif rollup_choice == "Produto → Material":
             rollup_query = f"""
             SELECT
                 CASE WHEN p.material IS NULL THEN 'Não Especificado' ELSE p.material END as category,
@@ -681,13 +692,13 @@ elif opcao == "🔍 Visão Analítica":
 
             rollup_results = run_query(rollup_query)
             if rollup_results:
-                rollup_df = to_dataframe(rollup_results, ["Categoria", "Total Vendas", "Número de Produtos"])
+                rollup_df = to_dataframe(rollup_results, ["Material", "Total Vendas", "Número de Produtos"])
 
                 fig = px.pie(
                     rollup_df,
                     values="Total Vendas",
-                    names="Categoria",
-                    title="Roll-up: Vendas por Categoria de Produto",
+                    names="Material",
+                    title="Roll-up: Vendas por Material de Produto",
                     hover_data=["Número de Produtos"]
                 )
                 st.plotly_chart(fig, use_container_width=True)
